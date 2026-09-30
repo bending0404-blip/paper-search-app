@@ -52,7 +52,7 @@ def generate_easy_outline(abstract_text):
 def search_crossref(query: str, lang_filter: str = "all", year_choice: str = "4", limit: int = 5):
     encoded_query = urllib.parse.quote(query)
     url = f"https://api.crossref.org/works?query={encoded_query}&rows=20&sort=relevance"
-    headers = {'User-Agent': 'AcademicPaperSearchWeb/2.0'}
+    headers = {'User-Agent': 'AcademicPaperSearchWeb/3.0'}
     
     try:
         req = urllib.request.Request(url, headers=headers)
@@ -103,8 +103,14 @@ def search_crossref(query: str, lang_filter: str = "all", year_choice: str = "4"
 # --- 網頁 session 管理 ---
 if 'search_results' not in st.session_state:
     st.session_state.search_results = []
+if 'primary_results' not in st.session_state:
+    st.session_state.primary_results = []
 if 'search_title' not in st.session_state:
     st.session_state.search_title = ""
+if 'primary_title' not in st.session_state:
+    st.session_state.primary_title = ""
+if 'is_extended' not in st.session_state:
+    st.session_state.is_extended = False
 
 # --- 網頁介面 ---
 st.title("🎓 碩士論文文獻研究助手 (Web 版)")
@@ -129,12 +135,28 @@ if st.button("🚀 開始檢索並構建文獻組", type="primary") and topic:
             papers = search_crossref(topic, lang_filter="all", year_choice="4", limit=5)
             
         st.session_state.search_results = papers
+        st.session_state.primary_results = papers
         st.session_state.search_title = f"核心主題：「{topic}」"
+        st.session_state.primary_title = f"核心主題：「{topic}」"
+        st.session_state.is_extended = False
 
-# 顯示搜尋結果
+# 顯示搜尋結果與返回按鈕
 if st.session_state.search_results:
     st.markdown("---")
-    st.subheader(f"📚 {st.session_state.search_title}")
+    
+    # 若在橫向/縱向延伸搜尋狀態，顯示返回主搜尋按鈕
+    if st.session_state.is_extended:
+        col_title, col_back = st.columns([3, 1])
+        with col_title:
+            st.subheader(f"🔍 {st.session_state.search_title}")
+        with col_back:
+            if st.button("🔙 返回原始核心文獻組", type="secondary"):
+                st.session_state.search_results = st.session_state.primary_results
+                st.session_state.search_title = st.session_state.primary_title
+                st.session_state.is_extended = False
+                st.rerun()
+    else:
+        st.subheader(f"📚 {st.session_state.search_title}")
     
     for idx, p in enumerate(st.session_state.search_results, 1):
         with st.expander(f"📌 [{idx}] {p['title']} ({p['year']})", expanded=True):
@@ -151,12 +173,13 @@ if st.session_state.search_results:
                 st.markdown("---")
                 btn_col1, btn_col2 = st.columns(2)
                 with btn_col1:
-                    if st.button(f"↔️ 橫向搜尋 (同類相似文獻)", key=f"sh_{idx}"):
+                    if st.button(f"↔️️ 橫向搜尋 (同類相似文獻)", key=f"sh_{idx}"):
                         with st.spinner("🔄 正在尋找同主題延伸論文..."):
                             sim_papers = search_crossref(p['title'], lang_filter="all", year_choice="4", limit=5)
                             if sim_papers:
                                 st.session_state.search_results = sim_papers
-                                st.session_state.search_title = f"橫向同類文獻: {p['title'][:25]}..."
+                                st.session_state.search_title = f"橫向延伸搜尋: {p['title'][:25]}..."
+                                st.session_state.is_extended = True
                                 st.rerun()
                             else:
                                 st.warning("未找到相關橫向文獻。")
@@ -168,6 +191,7 @@ if st.session_state.search_results:
                             if origin_papers:
                                 st.session_state.search_results = origin_papers
                                 st.session_state.search_title = f"縱向源頭脈絡: {p['title'][:25]}..."
+                                st.session_state.is_extended = True
                                 st.rerun()
                             else:
                                 st.warning("未找到 10 年以上相關經典文獻。")
