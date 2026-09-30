@@ -6,7 +6,7 @@ import urllib.parse
 import re
 from datetime import datetime
 
-# 設定網頁標題與寬螢幕佈局
+# 設定網頁頁面資訊
 st.set_page_config(page_title="碩士論文文獻研究助手", page_icon="🎓", layout="wide")
 
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -45,14 +45,14 @@ def generate_easy_outline(abstract_text):
     sentences = [s.strip() for s in re.split(r'[.!?。；]', abstract_text) if len(s.strip()) > 10]
     outline = []
     if len(sentences) >= 1: outline.append(f"🎯 研究核心：{sentences[0]}")
-    if len(sentences) >= 2: outline.append(f"🛠️️ 方法/視角：{sentences[1]}")
+    if len(sentences) >= 2: outline.append(f"🛠 方法/視角：{sentences[1]}")
     if len(sentences) >= 3: outline.append(f"💡 主要結論：{sentences[2]}")
     return outline
 
 def search_crossref(query: str, lang_filter: str = "all", year_choice: str = "4", limit: int = 5):
     encoded_query = urllib.parse.quote(query)
     url = f"https://api.crossref.org/works?query={encoded_query}&rows=20&sort=relevance"
-    headers = {'User-Agent': 'AcademicPaperSearchWeb/1.0'}
+    headers = {'User-Agent': 'AcademicPaperSearchWeb/2.0'}
     
     try:
         req = urllib.request.Request(url, headers=headers)
@@ -97,52 +97,85 @@ def search_crossref(query: str, lang_filter: str = "all", year_choice: str = "4"
                 })
                 if len(papers) >= limit: break
             return papers
-    except Exception as e:
+    except Exception:
         return []
 
-# --- 網頁介面渲染 ---
+# --- 網頁 session 管理 ---
+if 'search_results' not in st.session_state:
+    st.session_state.search_results = []
+if 'search_title' not in st.session_state:
+    st.session_state.search_title = ""
+
+# --- 網頁介面 ---
 st.title("🎓 碩士論文文獻研究助手 (Web 版)")
 st.caption("協助研究生打破資訊盲區、梳理理論脈絡，快速進行 Literature Review")
 
 # 側邊欄設定
 st.sidebar.header("⚙️ 搜尋條件設定")
-lang_option = st.sidebar.selectbox("🌐 論文語言類型", ["1. 不限 (中英文混合)", "2. 僅英文論文 (English Only)", "3. 仅中文論文 (Chinese Only)"])
+lang_option = st.sidebar.selectbox("🌐 論文語言類型", ["1. 不限 (中英文混合)", "2. 僅英文論文 (English Only)", "3. 僅中文論文 (Chinese Only)"])
 year_option = st.sidebar.selectbox("📅 出版年份範圍", ["4. 不限年份", "1. 近 5 年文獻 (2021-2026)", "2. 近 10 年文獻 (2016-2026)", "3. 10 年以上經典文獻 (< 2016)"])
 
-lang_map = {"1. 不限 (中英文混合)": "all", "2. 僅英文論文 (English Only)": "en", "3. 仅中文論文 (Chinese Only)": "zh"}
+lang_map = {"1. 不限 (中英文混合)": "all", "2. 僅英文論文 (English Only)": "en", "3. 僅中文論文 (Chinese Only)": "zh"}
 year_map = {"4. 不限年份": "4", "1. 近 5 年文獻 (2021-2026)": "1", "2. 近 10 年文獻 (2016-2026)": "2", "3. 10 年以上經典文獻 (< 2016)": "3"}
 
-# 主搜尋輸入
+# 搜尋列
 topic = st.text_input("請輸入【研究題目 / 核心主題】：", placeholder="例如：生成式人工智慧在金融風險預測與法規合規之應用與挑戰")
 
 if st.button("🚀 開始檢索並構建文獻組", type="primary") and topic:
     with st.spinner("🔍 正在檢索 Crossref 全球學術資料庫中..."):
         query = translate_to_english(topic)
         papers = search_crossref(query, lang_filter=lang_map[lang_option], year_choice=year_map[year_option], limit=5)
-        
         if not papers:
             papers = search_crossref(topic, lang_filter="all", year_choice="4", limit=5)
             
-        if papers:
-            st.success(f"✅ 成功找到 5 篇核心文獻組！")
-            st.markdown("---")
-            
-            for idx, p in enumerate(papers, 1):
-                with st.expander(f"📌 [{idx}] {p['title']} ({p['year']})", expanded=True):
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        st.markdown(f"**👤 作者**：{p['author']} | **📅 年份**：{p['year']}")
-                        st.markdown(f"**📖 APA 引用**：`{p['apa']}`")
-                        st.markdown("---")
-                        st.markdown("**💡 3秒淺顯易懂大綱 (Quick Summary)：**")
-                        for line in p['outline']:
-                            st.write(f"- {line}")
-                    with col2:
-                        if p['url']:
-                            st.link_button("🌐 開啟全文網頁/DOI", p['url'])
-                        st.code(p['bibtex'], language="latex")
-        else:
-            st.warning("⚠️ 未找到相關論文，請嘗試精簡關鍵字。")
+        st.session_state.search_results = papers
+        st.session_state.search_title = f"核心主題：「{topic}」"
+
+# 顯示搜尋結果
+if st.session_state.search_results:
+    st.markdown("---")
+    st.subheader(f"📚 {st.session_state.search_title}")
+    
+    for idx, p in enumerate(st.session_state.search_results, 1):
+        with st.expander(f"📌 [{idx}] {p['title']} ({p['year']})", expanded=True):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown(f"**👤 作者**：{p['author']} | **📅 年份**：{p['year']}")
+                st.markdown(f"**📖 APA 引用**：`{p['apa']}`")
+                st.markdown("---")
+                st.markdown("**💡 3秒淺顯易懂大綱 (Quick Summary)：**")
+                for line in p['outline']:
+                    st.write(f"- {line}")
+                
+                # 橫向與縱向擴充按鈕列
+                st.markdown("---")
+                btn_col1, btn_col2 = st.columns(2)
+                with btn_col1:
+                    if st.button(f"↔️ 橫向搜尋 (同類相似文獻)", key=f"sh_{idx}"):
+                        with st.spinner("🔄 正在尋找同主題延伸論文..."):
+                            sim_papers = search_crossref(p['title'], lang_filter="all", year_choice="4", limit=5)
+                            if sim_papers:
+                                st.session_state.search_results = sim_papers
+                                st.session_state.search_title = f"橫向同類文獻: {p['title'][:25]}..."
+                                st.rerun()
+                            else:
+                                st.warning("未找到相關橫向文獻。")
+                                
+                with btn_col2:
+                    if st.button(f"↕️ 縱向脈絡 (溯源10年經典)", key=f"sv_{idx}"):
+                        with st.spinner("📜 正在回溯理論起源與經典基石文獻..."):
+                            origin_papers = search_crossref(p['title'], lang_filter="all", year_choice="3", limit=5)
+                            if origin_papers:
+                                st.session_state.search_results = origin_papers
+                                st.session_state.search_title = f"縱向源頭脈絡: {p['title'][:25]}..."
+                                st.rerun()
+                            else:
+                                st.warning("未找到 10 年以上相關經典文獻。")
+
+            with col2:
+                if p['url']:
+                    st.link_button("🌐 開啟全文網頁/DOI", p['url'])
+                st.code(p['bibtex'], language="latex")
 
 st.markdown("---")
 st.caption("💡 提示：連接校園網路 / VPN 後點擊「開啟全文網頁/DOI」，即可直接享受學校資料庫的全文下載權限！")
