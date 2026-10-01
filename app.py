@@ -12,32 +12,59 @@ st.set_page_config(page_title="碩士論文文獻研究助手", page_icon="🎓"
 ssl._create_default_https_context = ssl._create_unverified_context
 CURRENT_YEAR = datetime.now().year
 
+# 跨領域通用學術專有名詞字典（可持續擴充）
 TRANSLATE_MAP = {
-    "零知識證明": "zero knowledge proof",
-    "去中心化": "decentralized",
-    "身分驗證": "identity authentication",
-    "隱私保護": "privacy protection",
-    "永續金融": "sustainable finance",
-    "國際投資法": "international investment law",
-    "適法性": "legality compliance",
-    "分類標準": "taxonomy",
-    "重工業": "heavy industry",
-    "去碳化": "decarbonization",
-    "轉型融資": "transition finance",
+    # 資訊與 AI 領域 (避免與教育學深度學習混淆)
+    "深度學習": "deep learning neural network",
+    "機器學習": "machine learning algorithm",
+    "生成式人工智慧": "generative artificial intelligence llm",
     "人工智慧": "artificial intelligence",
-    "機器學習": "machine learning",
-    "區塊鏈": "blockchain",
+    "AI": "artificial intelligence",
+    "強化學習": "reinforcement learning",
+    "電腦視覺": "computer vision",
+    "自然語言處理": "natural language processing nlp",
+    "區塊鏈": "blockchain smart contract",
+    "零知識證明": "zero knowledge proof",
+    
+    # 財金與經濟領域
+    "股價崩盤風險": "stock price crash risk",
+    "崩盤風險": "crash risk",
+    "涉入程度": "adoption level involvement",
+    "永續金融": "sustainable finance esg",
+    "轉型融資": "transition finance decarbonization",
+    "公司治理": "corporate governance",
+    "資訊透明度": "information transparency",
+    
+    # 社會與管理領域
     "外送員": "food delivery riders courier",
-    "勞動過程": "labor process"
+    "勞動過程": "labor process control",
+    "平台資本主義": "platform capitalism algorithm",
+    "演算法控制": "algorithmic control management"
 }
 
 def translate_to_english(topic: str) -> str:
-    if len(re.findall(r'[a-zA-Z]', topic)) > len(topic) * 0.4:
-        clean_text = re.sub(r'[^\w\s]', ' ', topic)
-        return " ".join(clean_text.split()[:6])
+    # 1. 提取已有英文
+    en_words = re.findall(r'[a-zA-Z0-9]+', topic)
     
-    translated_keywords = [en for zh, en in TRANSLATE_MAP.items() if zh in topic]
-    return " ".join(translated_keywords) if translated_keywords else re.sub(r'[^\w\s\u4e00-\u9fa5]', ' ', topic).strip()
+    # 2. 精準匹配專業詞庫
+    translated_keywords = []
+    sorted_keys = sorted(TRANSLATE_MAP.keys(), key=len, reverse=True)
+    
+    temp_topic = topic
+    for zh in sorted_keys:
+        if zh in temp_topic:
+            translated_keywords.append(TRANSLATE_MAP[zh])
+            temp_topic = temp_topic.replace(zh, "")
+            
+    # 3. 清理剩餘中文無效字詞（去除連接詞、助詞）
+    clean_remains = re.sub(r'[之與的關聯影響及在應用與之研究與分析基於對]', ' ', temp_topic).strip()
+    
+    all_keywords = translated_keywords + en_words
+    if clean_remains:
+        all_keywords.append(clean_remains)
+        
+    final_query = " ".join(all_keywords).strip()
+    return final_query if final_query else topic
 
 def generate_easy_outline(abstract_text):
     if not abstract_text or "文獻提供" in abstract_text or len(abstract_text) < 30:
@@ -49,10 +76,11 @@ def generate_easy_outline(abstract_text):
     if len(sentences) >= 3: outline.append(f"💡 主要結論：{sentences[2]}")
     return outline
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def search_crossref(query: str, lang_filter: str = "all", year_choice: str = "4", limit: int = 5):
     encoded_query = urllib.parse.quote(query)
-    url = f"https://api.crossref.org/works?query={encoded_query}&rows=20&sort=relevance"
-    headers = {'User-Agent': 'AcademicPaperSearchWeb/3.0'}
+    url = f"https://api.crossref.org/works?query={encoded_query}&rows=25&sort=relevance"
+    headers = {'User-Agent': 'AcademicPaperSearchWeb/6.0'}
     
     try:
         req = urllib.request.Request(url, headers=headers)
@@ -117,7 +145,7 @@ st.title("🎓 碩士論文文獻研究助手 (Web 版)")
 st.caption("協助研究生打破資訊盲區、梳理理論脈絡，快速進行 Literature Review")
 
 # 側邊欄設定
-st.sidebar.header("⚙️ 搜尋條件設定")
+st.sidebar.header("⚙️️ 搜尋條件設定")
 lang_option = st.sidebar.selectbox("🌐 論文語言類型", ["1. 不限 (中英文混合)", "2. 僅英文論文 (English Only)", "3. 僅中文論文 (Chinese Only)"])
 year_option = st.sidebar.selectbox("📅 出版年份範圍", ["4. 不限年份", "1. 近 5 年文獻 (2021-2026)", "2. 近 10 年文獻 (2016-2026)", "3. 10 年以上經典文獻 (< 2016)"])
 
@@ -125,11 +153,13 @@ lang_map = {"1. 不限 (中英文混合)": "all", "2. 僅英文論文 (English O
 year_map = {"4. 不限年份": "4", "1. 近 5 年文獻 (2021-2026)": "1", "2. 近 10 年文獻 (2016-2026)": "2", "3. 10 年以上經典文獻 (< 2016)": "3"}
 
 # 搜尋列
-topic = st.text_input("請輸入【研究題目 / 核心主題】：", placeholder="例如：生成式人工智慧在金融風險預測與法規合規之應用與挑戰")
+topic = st.text_input("請輸入【研究題目 / 核心主題】：", placeholder="例如：深度學習在影像辨識之應用")
 
 if st.button("🚀 開始檢索並構建文獻組", type="primary") and topic:
     with st.spinner("🔍 正在檢索 Crossref 全球學術資料庫中..."):
         query = translate_to_english(topic)
+        st.info(f"💡 系統自動轉化學術 Query：`{query}`")
+        
         papers = search_crossref(query, lang_filter=lang_map[lang_option], year_choice=year_map[year_option], limit=5)
         if not papers:
             papers = search_crossref(topic, lang_filter="all", year_choice="4", limit=5)
@@ -144,7 +174,6 @@ if st.button("🚀 開始檢索並構建文獻組", type="primary") and topic:
 if st.session_state.search_results:
     st.markdown("---")
     
-    # 若在橫向/縱向延伸搜尋狀態，顯示返回主搜尋按鈕
     if st.session_state.is_extended:
         col_title, col_back = st.columns([3, 1])
         with col_title:
@@ -169,11 +198,10 @@ if st.session_state.search_results:
                 for line in p['outline']:
                     st.write(f"- {line}")
                 
-                # 橫向與縱向擴充按鈕列
                 st.markdown("---")
                 btn_col1, btn_col2 = st.columns(2)
                 with btn_col1:
-                    if st.button(f"↔️️ 橫向搜尋 (同類相似文獻)", key=f"sh_{idx}"):
+                    if st.button(f"↔️ 橫向搜尋 (同類相似文獻)", key=f"sh_{idx}"):
                         with st.spinner("🔄 正在尋找同主題延伸論文..."):
                             sim_papers = search_crossref(p['title'], lang_filter="all", year_choice="4", limit=5)
                             if sim_papers:
@@ -185,7 +213,7 @@ if st.session_state.search_results:
                                 st.warning("未找到相關橫向文獻。")
                                 
                 with btn_col2:
-                    if st.button(f"↕️ 縱向脈絡 (溯源10年經典)", key=f"sv_{idx}"):
+                    if st.button(f"↕️️ 縱向脈絡 (溯源10年經典)", key=f"sv_{idx}"):
                         with st.spinner("📜 正在回溯理論起源與經典基石文獻..."):
                             origin_papers = search_crossref(p['title'], lang_filter="all", year_choice="3", limit=5)
                             if origin_papers:
